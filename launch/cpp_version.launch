@@ -1,0 +1,5 @@
+<launch>
+        <node pkg="my_pcl_tutorial" name="example" type="example" output="screen"/>
+
+</launch>
+
