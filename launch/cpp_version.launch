@@ -1,5 +1,5 @@
 <launch>
         <node pkg="my_pcl_tutorial" name="example" type="example" output="screen"/>
-
+           <arg name="input" value="/camera/depth/points" />
 </launch>
 
