@@ -23,9 +23,6 @@
 #include <geometry_msgs/Point.h>
 #include <pcl/common/common.h>
 #include <std_msgs/Float64.h>
-#include <my_pcl_tutorial/ClusterArray.h>
-ros::Publisher pub;
-ros::Publisher pub_one_cluster;
 ros::Publisher pub_ransac;
 
 void 
@@ -45,8 +42,9 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input)
         pass.setFilterFieldName ("z");
    	pass.setFilterLimits (0.75,1000);
    	pass.filter (*cloud_filtered);
-   
-        
+           
+
+
     	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_ransac(new pcl::PointCloud<pcl::PointXYZ>);
     	// perform ransac planar filtration
 	pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
@@ -56,9 +54,13 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input)
 	// Optional
 	seg1.setOptimizeCoefficients (true);
 	// Mandatory
-	seg1.setModelType (pcl::SACMODEL_PLANE);
-	seg1.setMethodType (pcl::SAC_RANSAC);
+	seg1.setModelType (pcl::SACMODEL_PERPENDICULAR_PLANE);
+        seg1.setMethodType (pcl::SAC_RANSAC);
 	seg1.setDistanceThreshold (0.01);
+
+        Eigen::Vector3f axis = Eigen::Vector3f(0.0,1.0,0.0);
+	seg1.setAxis(axis);
+	seg1.setEpsAngle(  30.0f * (3.14/180.0f) ); 
 
 	seg1.setInputCloud (cloud_filtered);
 	seg1.segment (*inliers, *coefficients);
@@ -72,64 +74,13 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input)
 	extract.setNegative (false);
 	extract.filter (*cloud_ransac);
         
-        sensor_msgs::PointCloud2 output1;
-        pcl::PCLPointCloud2 outputPCL1;
-
-
-        pcl::toPCLPointCloud2( *cloud_ransac ,outputPCL1);
-        pcl_conversions::fromPCL(outputPCL1, output1);
-        pub_ransac.publish(output1);
-
-        
-	// Perform downsampling
-	pcl::VoxelGrid<pcl::PointXYZ> sor;
-	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_downsampling(new pcl::PointCloud<pcl::PointXYZ>);
-	sor.setInputCloud (cloud_ransac);
-	sor.setLeafSize (0.05, 0.05, 0.05);
-	sor.filter (*cloud_downsampling);
-        
-    	// perform euclidean cluster segmentation
-
-	// Create the KdTree object for the search method of the extraction
-	
-        pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ>);
-	tree->setInputCloud (cloud_downsampling);
-
-	// create the extraction object for the clusters
-	std::vector<pcl::PointIndices> cluster_indices;
-	pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
-	// specify euclidean cluster parameters
-	ec.setClusterTolerance (0.02); // 2cm
-	ec.setMinClusterSize (100);
-	ec.setMaxClusterSize (25000);
-	ec.setSearchMethod (tree);
-	ec.setInputCloud (cloud_downsampling);
-	// exctract the indices pertaining to each cluster and store in a vector of pcl::PointIndices
-	ec.extract (cluster_indices);
-	
-	//iterate over found clusters
-        my_pcl_tutorial::ClusterArray CloudClusters;
-	sensor_msgs::PointCloud2 output;
+        sensor_msgs::PointCloud2 output;
         pcl::PCLPointCloud2 outputPCL;
-	std::vector<sensor_msgs::PointCloud2> cluster_vec;
-        for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin (); it != cluster_indices.end (); ++it)
-    	{
-    		pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_cluster (new pcl::PointCloud<pcl::PointXYZ>);
-    		//iterate over the points of the i cluster
-    		for (std::vector<int>::const_iterator pit = it->indices.begin (); pit != it->indices.end (); ++pit)
-    		{
-    			cloud_cluster->points.push_back (cloud_downsampling->points[*pit]);	
-    		}
 
-		pcl::toPCLPointCloud2( *cloud_cluster ,outputPCL);
-                pcl_conversions::fromPCL(outputPCL, output);
-                CloudClusters.clusters.push_back(output);
-                output.header.frame_id = input->header.frame_id;
-                pub_one_cluster.publish(output);		
 
-	}
-        pub.publish(CloudClusters);
-      
+        pcl::toPCLPointCloud2( *cloud_ransac ,outputPCL);
+        pcl_conversions::fromPCL(outputPCL, output);
+        pub_ransac.publish(output);
 }
 
 int
@@ -140,9 +91,7 @@ main (int argc, char** argv)
 	ros::NodeHandle nh;
 	// Create a ROS subscriber for the input point cloud
 	ros::Subscriber sub = nh.subscribe ("input", 1, cloud_cb);
-        pub_one_cluster =  nh.advertise<sensor_msgs::PointCloud2> ("/camera_objects", 1);
 	// Create a ROS publisher for the output point cloud
-	pub = nh.advertise<my_pcl_tutorial::ClusterArray> ("/array_clusters", 1);
 	pub_ransac = nh.advertise<sensor_msgs::PointCloud2> ("/ransac_objects", 1);
 	// Spin
 	ros::spin ();
